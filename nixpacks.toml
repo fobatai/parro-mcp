@@ -1,0 +1,43 @@
+# Nixpacks build for Dokploy.
+#
+# The Python provider picks up requirements.txt on its own. What it cannot know
+# about is mcp-auth-proxy: a Go binary that serves the MCP over HTTP and puts
+# the OAuth 2.1 layer in front of it. So we fetch it in its own phase and start
+# it instead of starting Python directly - the proxy spawns parro_mcp.py itself.
+#
+# (The Dockerfile in this repo does the same thing more simply. Keep them in
+# step if you change one.)
+
+providers = ["python"]
+
+[variables]
+DATA_PATH = "/data"
+PARRO_TOKEN_FILE = "/data/parro-tokens.json"
+LISTEN = ":8080"
+
+[phases.setup]
+# PyMuPDF ships a compiled extension that links against libstdc++, which the
+# Nix image does not carry by default: without this, importing it dies with
+# "libstdc++.so.6: cannot open shared object file".
+nixLibs = ["stdenv.cc.cc.lib"]
+
+[phases.authproxy]
+dependsOn = ["setup"]
+cmds = [
+  "mkdir -p /app/bin /data",
+  "curl -fsSL https://github.com/sigbit/mcp-auth-proxy/releases/download/v2.10.2/mcp-auth-proxy-linux-amd64 -o /app/bin/mcp-auth-proxy",
+  "chmod +x /app/bin/mcp-auth-proxy",
+]
+
+[start]
+# Two traps, both of which fail quietly - the server starts fine and only falls
+# over when it meets its first PDF attachment:
+#
+#   /opt/venv/bin/python, not plain "python". Nixpacks installs requirements.txt
+#   into that venv, but the proxy spawns its child with the image's own PATH,
+#   which points at the bare Nix interpreter.
+#
+#   LD_LIBRARY_PATH, resolved here rather than in [variables]. nixLibs puts
+#   libstdc++ in the runtime image but not in the build stage, and its Nix store
+#   path carries a build hash, so it cannot be written down in advance.
+cmd = "sh -c 'export LD_LIBRARY_PATH=$(dirname $(find /nix/store -name libstdc++.so.6 -print -quit)):$LD_LIBRARY_PATH; exec /app/bin/mcp-auth-proxy -- /opt/venv/bin/python parro_mcp.py'"

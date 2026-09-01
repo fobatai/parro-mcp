@@ -1,0 +1,5 @@
+# Contains the login POST in plaintext plus live OAuth tokens. Never commit.
+*.har
+
+__pycache__/
+*.pyc

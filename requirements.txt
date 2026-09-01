@@ -1,0 +1,4 @@
+# parro_mcp.py itself is standard library only. These two are what let it read
+# attachments: PDF text extraction and image downscaling.
+pymupdf
+pillow
